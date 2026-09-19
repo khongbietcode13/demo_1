@@ -1,4 +1,4 @@
 idf_component_register(SRCS "main.c"
                     INCLUDE_DIRS "."
-                    REQUIRES DRIVER bmi160 
+                    REQUIRES driver bmi160
                     )

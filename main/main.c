@@ -1,88 +1,242 @@
 #include <stdio.h>
+#include <stdint.h>
+
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+
+#include "driver/i2c_master.h"
+#include "esp_err.h"
+#include "esp_log.h"
+
 #include "bmi160.h"
 
+#define I2C_SDA_GPIO       GPIO_NUM_21
+#define I2C_SCL_GPIO       GPIO_NUM_22
 
-int8_t user_i2c_read(uint8_t dev_addr, uint8_t reg_addr, uint8_t *data, uint16_t len) {
-    return 0; 
+#define I2C_PORT            I2C_NUM_0
+#define I2C_FREQ_HZ         400000
+
+#define BMI160_ADDR_0       0x68
+#define BMI160_ADDR_1       0x69
+
+static const char *TAG = "BMI160";
+
+static i2c_master_bus_handle_t i2c_bus;
+static i2c_master_dev_handle_t bmi160_i2c_dev;
+
+static int8_t user_i2c_read(
+    uint8_t dev_addr,
+    uint8_t reg_addr,
+    uint8_t *data,
+    uint16_t len)
+{
+    if (data == NULL || len == 0)
+        return -1;
+
+    if (dev_addr != BMI160_ADDR_0 && dev_addr != BMI160_ADDR_1)
+        return -1;
+
+    uint8_t reg = reg_addr;
+
+    esp_err_t ret = i2c_master_transmit_receive(
+        bmi160_i2c_dev,
+        &reg,
+        1,
+        data,
+        len,
+        1000
+    );
+
+    return (ret == ESP_OK) ? 0 : -1;
 }
 
-int8_t user_i2c_write(uint8_t dev_addr, uint8_t reg_addr, const uint8_t *data, uint16_t len) {
-    return 0; 
+static int8_t user_i2c_write(
+    uint8_t dev_addr,
+    uint8_t reg_addr,
+    const uint8_t *data,
+    uint16_t len)
+{
+    if (data == NULL || len == 0)
+        return -1;
+
+    if (dev_addr != BMI160_ADDR_0 && dev_addr != BMI160_ADDR_1)
+        return -1;
+
+    uint8_t buffer[256];
+
+    if (len + 1 > sizeof(buffer))
+        return -1;
+
+    buffer[0] = reg_addr;
+
+    for (uint16_t i = 0; i < len; i++)
+    {
+        buffer[i + 1] = data[i];
+    }
+
+    esp_err_t ret = i2c_master_transmit(
+        bmi160_i2c_dev,
+        buffer,
+        len + 1,
+        1000
+    );
+
+    return (ret == ESP_OK) ? 0 : -1;
 }
 
-
-void user_delay_ms(uint32_t ms) {
+static void user_delay_ms(uint32_t ms)
+{
+    vTaskDelay(pdMS_TO_TICKS(ms));
 }
 
-int main(void) {
-    // Khai báo đối tượng cảm biến BMI160
+static esp_err_t i2c_init(uint8_t bmi_addr)
+{
+    i2c_master_bus_config_t bus_config = {
+        .clk_source = I2C_CLK_SRC_DEFAULT,
+        .i2c_port = I2C_PORT,
+        .scl_io_num = I2C_SCL_GPIO,
+        .sda_io_num = I2C_SDA_GPIO,
+        .glitch_ignore_cnt = 7,
+        .flags.enable_internal_pullup = true,
+    };
+
+    esp_err_t ret = i2c_new_master_bus(&bus_config, &i2c_bus);
+
+    if (ret != ESP_OK)
+        return ret;
+
+    i2c_device_config_t dev_config = {
+        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+        .device_address = bmi_addr,
+        .scl_speed_hz = I2C_FREQ_HZ,
+    };
+
+    ret = i2c_master_bus_add_device(
+        i2c_bus,
+        &dev_config,
+        &bmi160_i2c_dev
+    );
+
+    return ret;
+}
+
+void app_main(void)
+{
+    printf("\n");
+    printf("============================\n");
+    printf("       BMI160 TEST\n");
+    printf("============================\n");
+
+    esp_err_t ret;
+
+    i2c_master_bus_config_t bus_config = {
+        .clk_source = I2C_CLK_SRC_DEFAULT,
+        .i2c_port = I2C_PORT,
+        .scl_io_num = I2C_SCL_GPIO,
+        .sda_io_num = I2C_SDA_GPIO,
+        .glitch_ignore_cnt = 7,
+        .flags.enable_internal_pullup = true,
+    };
+
+    ret = i2c_new_master_bus(&bus_config, &i2c_bus);
+
+    if (ret != ESP_OK)
+    {
+        ESP_LOGE(TAG, "I2C init failed: %s", esp_err_to_name(ret));
+        return;
+    }
+
+    uint8_t bmi_addr = 0;
+
+    ret = i2c_master_probe(i2c_bus, BMI160_ADDR_0, 1000);
+
+    if (ret == ESP_OK)
+    {
+        bmi_addr = BMI160_ADDR_0;
+        ESP_LOGI(TAG, "BMI160 found at 0x68");
+    }
+    else
+    {
+        ret = i2c_master_probe(i2c_bus, BMI160_ADDR_1, 1000);
+
+        if (ret == ESP_OK)
+        {
+            bmi_addr = BMI160_ADDR_1;
+            ESP_LOGI(TAG, "BMI160 found at 0x69");
+        }
+        else
+        {
+            ESP_LOGE(TAG, "BMI160 not found at 0x68 or 0x69");
+            return;
+        }
+    }
+
+    i2c_device_config_t dev_config = {
+        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+        .device_address = bmi_addr,
+        .scl_speed_hz = I2C_FREQ_HZ,
+    };
+
+    ret = i2c_master_bus_add_device(
+        i2c_bus,
+        &dev_config,
+        &bmi160_i2c_dev
+    );
+
+    if (ret != ESP_OK)
+    {
+        ESP_LOGE(TAG, "Add BMI160 device failed: %s",
+                 esp_err_to_name(ret));
+        return;
+    }
+
     bmi160_dev_t bmi;
 
-    // --- CẤU HÌNH CẢM BIẾN ---
-    bmi.dev_addr = 0x68;           // Địa chỉ I2C mặc định của BMI160 (0x68 hoặc 0x69)
-    bmi.read     = user_i2c_read;  // Gán hàm đọc phần cứng
-    bmi.write    = user_i2c_write; // Gán hàm ghi phần cứng
-    bmi.delay    = user_delay_ms;  // Gán hàm delay
-    bmi.intf     = BMI160_INTF_UNKNOWN; // Để thư viện tự kiểm tra giao tiếp
+    bmi.dev_addr = bmi_addr;
+    bmi.intf = BMI160_INTF_I2C;
+    bmi.read = user_i2c_read;
+    bmi.write = user_i2c_write;
+    bmi.delay = user_delay_ms;
 
-    printf("--- BAT DAU KIEM TRA CAM BIEN BMI160 ---\n");
+    ret = bmi160_init(&bmi);
 
-    // 1. Kiểm tra kết nối cảm biến (Tự phát hiện I2C hay SPI)
-    bmi160_intf_t intf = bmi160_check_interface(&bmi);
-    if (intf == BMI160_INTF_I2C) {
-        printf("[OK] Da ket noi voi BMI160 qua chuan I2C!\n");
-    } else if (intf == BMI160_INTF_SPI) {
-        printf("[OK] Da ket noi voi BMI160 qua chuan SPI!\n");
-    } else {
-        printf("[ERROR] Khong tim thay cam bien BMI160! Vui long kiem tra lai day noi.\n");
-        return -1;
+    if (ret != 0)
+    {
+        ESP_LOGE(TAG, "BMI160 init failed: %d", (int)ret);
+        return;
     }
 
-    // 2. Khởi tạo cảm biến (Soft-reset & Bật Accel/Gyro sang Normal Mode)
-    if (bmi160_init(&bmi) != 0) {
-        printf("[ERROR] Khoi tao BMI160 thoi bat thanh cong!\n");
-        return -1;
-    }
-    printf("[OK] Khoi tao BMI160 thanh cong!\n\n");
+    ESP_LOGI(TAG, "BMI160 initialized successfully");
 
-    // Khai báo biến chứa dữ liệu thô
-    bmi160_raw_data_t accel;
-    bmi160_raw_data_t gyro;
+    while (1)
+    {
+        bmi160_raw_data_t accel;
+        bmi160_raw_data_t gyro;
 
-    // 3. Vòng lặp đọc dữ liệu liên tục
-    while (1) {
-        // Đọc đồng thời cả Gia tốc (Accel) và Con quay hồi chuyển (Gyro)
-        if (bmi160_read_accel_gyro(&bmi, &accel, &gyro) == 0) {
-            
-            // --- A. IN DỮ LIỆU THÔ (RAW DATA - 16-bit signed) ---
-            printf("[RAW]  ACC [X:%6d Y:%6d Z:%6d] | GYR [X:%6d Y:%6d Z:%6d]\n",
-                   accel.x, accel.y, accel.z,
-                   gyro.x, gyro.y, gyro.z);
+        ret = bmi160_read_accel_gyro(
+            &bmi,
+            &accel,
+            &gyro
+        );
 
-            // --- B. CHUYỂN ĐỔI SANG ĐƠN VỊ THỰC TẾ ---
-            // Với dải đo mặc định của BMI160:
-            // - Accel (+/- 2g): Độ nhạy là 16384 LSB/g
-            // - Gyro (+/- 2000 dps): Độ nhạy là 16.4 LSB/(deg/s)
-            
-            float acc_x_g = (float)accel.x / 16384.0f;
-            float acc_y_g = (float)accel.y / 16384.0f;
-            float acc_z_g = (float)accel.z / 16384.0f;
-
-            float gyro_x_dps = (float)gyro.x / 16.4f;
-            float gyro_y_dps = (float)gyro.y / 16.4f;
-            float gyro_z_dps = (float)gyro.z / 16.4f;
-
-            printf("[PHYS] Gia toc (g):      X: %6.2f | Y: %6.2f | Z: %6.2f\n", acc_x_g, acc_y_g, acc_z_g);
-            printf("[PHYS] Vantoc gog (deg/s):X: %6.1f | Y: %6.1f | Z: %6.1f\n", gyro_x_dps, gyro_y_dps, gyro_z_dps);
-            printf("--------------------------------------------------------------------------------\n");
-
-        } else {
-            printf("[ERROR] Doc du lieu loi!\n");
+        if (ret == 0)
+        {
+            printf(
+                "ACC: X=%6d  Y=%6d  Z=%6d | "
+                "GYRO: X=%6d  Y=%6d  Z=%6d\n",
+                accel.x,
+                accel.y,
+                accel.z,
+                gyro.x,
+                gyro.y,
+                gyro.z
+            );
+        }
+        else
+        {
+            ESP_LOGE(TAG, "Read BMI160 failed");
         }
 
-        // Tạm dừng 500ms trước khi đọc lượt tiếp theo
-        bmi.delay(500);
+        vTaskDelay(pdMS_TO_TICKS(500));
     }
-
-    return 0;
 }
