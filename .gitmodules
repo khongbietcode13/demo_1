@@ -1,0 +1,3 @@
+[submodule "components/espnn"]
+	path = components/espnn
+	url = https://github.com/espressif/esp-nn
