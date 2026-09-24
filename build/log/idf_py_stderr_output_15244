@@ -1,0 +1,2 @@
+CMake Error: The current CMakeCache.txt directory D:/nhóm 1 iot/code/demo_1/build/CMakeCache.txt is different than the directory d:/emberded/demo_1/build where CMakeCache.txt was created. This may result in binaries being created in the wrong place. If you are not sure, reedit the CMakeCache.txt
+CMake Error: The source "D:/nhóm 1 iot/code/demo_1/CMakeLists.txt" does not match the source "D:/emberded/demo_1/CMakeLists.txt" used to generate cache.  Re-run cmake with a different source directory.

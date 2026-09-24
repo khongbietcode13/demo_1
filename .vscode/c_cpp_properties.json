@@ -1,20 +1,18 @@
 {
     "configurations": [
         {
-            "name": "Win32",
+            "name": "ESP-IDF",
             "includePath": [
                 "${workspaceFolder}/**",
-                "C:/ESP32-env/frameworks/esp-idf-v5.4.4/components/**",
+                "${workspaceFolder}/build/config",
+                "${workspaceFolder}/managed_components/**/include",
                 "C:/ESP32-env/frameworks/esp-idf-v5.4.4/components/**/include"
             ],
-            "defines": [
-                "_DEBUG",
-                "UNICODE",
-                "_UNICODE"
-            ],
-            "cStandard": "gnu23",
+            "compilerPath": "C:/ESP32-env/tools/xtensa-esp-elf/esp-14.2.0_20241119/xtensa-esp-elf/bin/xtensa-esp32-elf-gcc.exe",
+            "cStandard": "gnu17",
             "cppStandard": "gnu++17",
-            "intelliSenseMode": "windows-gcc-x64"
+            "intelliSenseMode": "gcc-x64",
+            "compileCommands": "${workspaceFolder}/build/compile_commands.json"
         }
     ],
     "version": 4
